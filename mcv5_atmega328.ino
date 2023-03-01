@@ -1,7 +1,12 @@
 // Adapted from PGrady EasyController2 - https://github.com/pgrady3/EasyController2
 // Adapted for atmega328: Uno board.
 
-// 2/27/23: MCv5.0 duration tested for 10+ minutes at ~250PWM drawing 24.0V, 0.3A.
+// 2/28/23: MCv5.0 hot-swap battery and max spike tested. Milestone 2 (unloaded, battery) suceeded. old motor halls identified prior, identifyHalls fxn removed. 
+// Powering in either order (MC then motor OR motor then MC) both work. plugging in mcu causes motor to immediately act on pot inupts (after start seq).
+// Not exceeding 50A unloaded (likely far lower) even on max pot change
+// Moderate cogging at <50 PWM
+
+// 2/27/23: MCv5.0 duration tested for 10+ minutes at ~250PWM drawing 24.0V, 0.3A. Power supply
 // Moderate cogging at <50 PWM
 
 #include <Arduino.h>
@@ -13,9 +18,9 @@
 #define THROTTLE_HIGH 510
 
 // halls, gate driver, throttle, debug pins
-#define HALL_1_PIN 3
+#define HALL_1_PIN 2
 #define HALL_2_PIN 5
-#define HALL_3_PIN 4
+#define HALL_3_PIN 3
 
 #define AH_PIN 9            
 #define AL_PIN 8
@@ -32,7 +37,8 @@
 int HALL_OVERSAMPLE = 10;
 
 // mapping hall sensing to motor state
-uint8_t hallToMotor[8] = {255, 255, 255, 255, 255, 255, 255, 255};
+//uint8_t hallToMotor[8] = {255, 255, 255, 255, 255, 255, 255, 255}; // default hall to motor state mapping, unused
+uint8_t hallToMotor[8] = {255, 4, 2, 3, 0, 5, 1, 255}; // hall to motor state mapping, accurate for current pin config, old motor
 
 // writes pwm to high side FETs, digital value to low side
 void writePhases(uint8_t ah, uint8_t bh, uint8_t ch, uint8_t al, uint8_t bl, uint8_t cl)
@@ -97,18 +103,33 @@ uint8_t getHalls()
  */
 void identifyHalls()
 {
-  HALL_OVERSAMPLE = 32;
+  HALL_OVERSAMPLE = 10;
   for(uint8_t i = 0; i < 6; i++)
   {
     uint8_t nextState = (i + 1) % 6;        // Calculate what the next state should be. This is for switching into half-states
-    for(uint16_t j = 0; j < 300; j++)       // For a while, repeatedly switch between states
+    
+    uint8_t curHalls = getHalls();
+    uint8_t attempts = 0;
+    
+    while ((getHalls() == curHalls) && attempts < 500) // new and reliable method, spin until next hall state reached to map
+    //for(uint16_t j = 0; j < 300; j++)       // original method: for a while, repeatedly switch between states and assume next reached to map
     {
       delay(1);
       writePWM(i, 30);
       delay(1);
       writePWM(nextState, 30);
+      attempts += 1;
     }
+    
     writePWM(0,0);
+
+    // print and stall if next hall not reached in 500 pulses (unreached, untested)
+    if (attempts >= 500){
+      Serial.print("Init failed with hall activation ");
+      Serial.println(getHalls());
+      while (true){} // infinite loop
+    }
+    
     digitalWrite(LED_PIN, HIGH);
     delay(500);
     digitalWrite(LED_PIN, LOW);
@@ -193,7 +214,7 @@ void setup() {
               
   pinMode(THROTTLE_PIN, INPUT);
   
-  identifyHalls();
+  //identifyHalls(); // uncomment for hall identification on startup. suggest doing auto-identify unloaded, import vals into mapping array for loaded
 }
 
 // vals used in main loop
