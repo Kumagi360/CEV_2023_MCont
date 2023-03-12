@@ -1,8 +1,8 @@
 
-//MCont with MEGA registers and pinout
-
+// MCont with MEGA registers and pinout
 // Adapted from PGrady EasyController2 - https://github.com/pgrady3/EasyController2
-// Adapted for atmega328: Uno board.
+
+// 3/12/23: MCv5 with original FETs unloaded duration tested
 
 // 2/28/23: MCv5.0 hot-swap battery and max spike tested. Milestone 2 (unloaded, battery) suceeded. old motor halls identified prior, identifyHalls fxn removed. 
 // Powering in either order (MC then motor OR motor then MC) both work. plugging in mcu causes motor to immediately act on pot inupts (after start seq).
@@ -94,7 +94,7 @@ uint8_t getHalls()
   digitalWrite(LED_PIN, !digitalRead(LED_PIN));
 
   uint8_t hallCounts[] = {0, 0, 0};
-  for(uint8_t i = 0; i < HALL_OVERSAMPLE; i++) // read halls the number of times specified in oversample
+  for(uint8_t i = 0; i < HALL_OVERSAMPLE; i++)
   {
     hallCounts[0] += digitalReadFast(HALL_1_PIN);
     hallCounts[1] += digitalReadFast(HALL_2_PIN);
@@ -113,23 +113,17 @@ uint8_t getHalls()
   return hall & 0x7;                            // Just to make sure we didn't do anything stupid, set the maximum output value to 7
 }
 
-/* Magic function to do hall auto-identification. Moves the motor to all 6 states, then reads the hall values from each one
- * 
- * Note, that in order to get a clean hall reading, we actually need to commutate to half-states. So instead of going to state 3, for example
- * we commutate to state 3.5, by rapidly switching between states 3 and 4. After waiting for a while (half a second), we read the hall value.
- * Finally, print it
- */
 void identifyHalls()
 {
   HALL_OVERSAMPLE = 10;
   for(uint8_t i = 0; i < 6; i++)
   {
-    uint8_t nextState = (i + 1) % 6;        // Calculate what the next state should be. This is for switching into half-states
+    uint8_t nextState = (i + 1) % 6;          // Calculate what the next state should be. This is for switching into half-states
     
     uint8_t curHalls = getHalls();
     uint8_t attempts = 0;
     
-    while ((getHalls() == curHalls)) // new and reliable method, spin until next hall state reached to map
+    while ((getHalls() == curHalls))          // new and reliable method, spin until next hall state reached to map
     //for(uint16_t j = 0; j < 300; j++)       // original method: for a while, repeatedly switch between states and assume next reached to map
     {
       delay(1);
@@ -176,10 +170,6 @@ void identifyHalls()
   Serial.println();
 }
 
-
-/* Read the throttle value from the ADC. Because our ADC can read from 0v-3.3v, but the throttle doesn't output over this whole range,
- * scale the throttle reading to take up the full range of 0-255
- */
 uint8_t readThrottle()
 {
   int adc = analogRead(THROTTLE_PIN); 
