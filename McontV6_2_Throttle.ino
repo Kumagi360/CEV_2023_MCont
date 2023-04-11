@@ -1,23 +1,22 @@
 // MContV6_2 pinout
-// Adapted from PGrady EasyController2 - https://github.com/pgrady3/EasyController2
 
 #include <Arduino.h>
 #include <digitalWriteFast.h>
 #include <math.h>
 
 // throttle bounding
-#define THROTTLE_LOW 50
+#define THROTTLE_LOW 60
 #define THROTTLE_HIGH 850
 
 // halls, gate driver, throttle, debug pins
 #define HALL_A_PIN 2
-#define HALL_B_PIN 3
+#define HALL_B_PIN 3 
 #define HALL_C_PIN 5
 
 // spare PWM pins
 #define PWM1 6
 #define PWM2 7
-#define PWM3 8
+//#define PWM3 8
 
 // spare analog pins
 #define ANLG1 A3
@@ -27,7 +26,7 @@
 // driver control pins
 #define AH_PIN 10   
 #define AL_PIN 12
-#define BH_PIN 45 
+#define BH_PIN 8 // formerly 45 
 #define BL_PIN 46
 #define CH_PIN 44
 #define CL_PIN 43 
@@ -43,7 +42,6 @@
 int HALL_OVERSAMPLE = 10;
 
 uint8_t motorState;
-uint8_t newThrottle;
 
 // mapping hall sensing to motor state
 //uint8_t hallToMotor[8] = {255, 255, 255, 255, 255, 255, 255, 255}; // default hall to motor state mapping, unused
@@ -185,7 +183,7 @@ void identifyHalls()
 }
 
 
-uint8_t readThrottle()
+int readThrottle()
 {
   // read throttle and eliminate 0 offset
   int adc = analogRead(THROTTLE_PIN) - THROTTLE_LOW;
@@ -195,7 +193,7 @@ uint8_t readThrottle()
   else if (adc > THROTTLE_HIGH) adc = THROTTLE_HIGH;
 
   // map to 0-250 PWM
-  newThrottle = map(adc, 0, THROTTLE_HIGH, 0, 250);
+  int newThrottle = map(adc, 0, THROTTLE_HIGH, 0, 250);
 
   return newThrottle;
 }
@@ -217,7 +215,7 @@ void setup() {
   TCCR1B = TCCR1B & B11111000 | B00000001;  // set digital 11, 12 to pwm 31372.55 Hz
   
   Serial.begin(115200);
-  Serial.println("mcont testing");
+  //Serial.println("mcont testing");
   pinModeFast(LED_PIN, OUTPUT);
  
   // init sequence for debugging
@@ -230,7 +228,7 @@ void setup() {
 
   pinModeFast(PWM1, OUTPUT);
   pinModeFast(PWM2, OUTPUT);
-  pinModeFast(PWM3, OUTPUT);
+  //pinModeFast(PWM3, OUTPUT);
 
   pinModeFast(ANLG1, OUTPUT);
   pinModeFast(ANLG2, OUTPUT);
@@ -249,7 +247,7 @@ void setup() {
   pinModeFast(HALL_B_PIN, INPUT_PULLUP);
   
   // throttle pin pulled down on board
-  pinModeFast(THROTTLE_PIN, INPUT);
+  pinMode(THROTTLE_PIN, INPUT);
 
   // Formerly overcurrent pin is input, now interrupt
   pinMode(OVERC, INPUT);
@@ -260,20 +258,61 @@ void setup() {
 
   // Uncomment for ramp up sequence to constant speed if loop PWM is constant
   // uint8_t hall;
-  // for(int i = 0; i < 10000; i++)
+  // for (int rampThrottle = 0; rampThrottle <= 250; rampThrottle++) //formerly 75000
   // { 
-  //   // read current hall state, map to motor state and drive accordingly
-  //   hall = getHalls();
-  //   motorState = hallToMotor[hall]; 
-  //   writePWM(motorState, i/40);
+  //   for (int hold = 0; hold < 500; hold++){
+  //     // read current hall state, map to motor state and drive accordingly
+  //     hall = getHalls();
+  //     motorState = hallToMotor[hall]; 
+  //     writePWM(motorState, rampThrottle); // formerly 300
+
+  //   }
   // }
 
 }
 
+void blinkThrottle(int throttle){
+    // digitalWriteFast(LED_PIN, HIGH);
+    // delay(600 - throttle*2);
+    // digitalWriteFast(LED_PIN, LOW);
+    // delay(600 - throttle*2);
+
+    if (throttle >= 250){
+      digitalWriteFast(LED_PIN, HIGH);
+    }
+    else{
+      digitalWriteFast(LED_PIN, LOW);
+    } 
+}
+
+
+void blinkState(){
+  uint8_t motorState = hallToMotor[getHalls()];
+  
+  if (motorState == 0){
+    digitalWriteFast(LED_PIN, HIGH);
+    delay(1500);
+    digitalWriteFast(LED_PIN, LOW);
+    delay(1500);
+  }
+  else{
+    for (int count = 0; count < motorState; count++){
+      digitalWriteFast(LED_PIN, HIGH);
+      delay(500);
+      digitalWriteFast(LED_PIN, LOW);
+      delay(500);
+    }
+  }
+
+  delay(1500);
+
+}
+
 // vals used in main loop
-uint8_t throttle = 0;
+int throttle = 0;
 uint8_t hall;
 int iterator = 0;
+int newThrottle = 0;
 
 void loop() {
 
@@ -285,6 +324,8 @@ void loop() {
   //Serial.println(hallToMotor[getHalls()]);
   //Serial.println(getHalls());
   //Serial.println(readThrottle());
+
+  //blinkState();
   
   digitalWriteFast(LED_PIN, LOW);
   
@@ -296,9 +337,17 @@ void loop() {
   else if (newThrottle < throttle){
     throttle -= 1;
   }
+
+  // for verifying if throttle read is accurate
+  //throttle = newThrottle;
+  //blinkThrottle(throttle);
+
+  // print the throttle 
+  // do not couple with PWM writes
+  // Serial.println(throttle);
   
-  // for every 200 PWM writes, update throttle
-  for(uint8_t i = 0; i < 200; i++)
+  // once every 500 PWM writes, update throttle (matches the ramp rate when throttle changes as throttle only incr/decr)
+  for(int i = 0; i < 500; i++)
   { 
 
     // read current hall state, map to motor state and drive accordingly
@@ -313,6 +362,7 @@ void loop() {
 
     // uncomment for throttle speed
     writePWM(motorState, throttle);
+
   }
   
 }
